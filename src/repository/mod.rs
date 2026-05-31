@@ -1,1 +1,1 @@
-mod parquet;
+pub mod parquet;

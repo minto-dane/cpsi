@@ -7,16 +7,16 @@ use crate::{
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Package {
-    name: String,
-    version: Version,
+    pub name: String,
+    pub version: Version,
 
-    release: u32,
-    arch: Vec<Architecture>,
+    pub release: u32,
+    pub arch: Vec<Architecture>,
 
-    dependencies: Vec<Dependency>,
-    description: String,
+    pub dependencies: Vec<Dependency>,
+    pub description: String,
 
-    provides: Vec<String>,
+    pub provides: Vec<String>,
 
-    repository: String,
+    pub repository: String,
 }

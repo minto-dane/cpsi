@@ -1,6 +1,7 @@
+use crate::util::version::Version;
 use serde::{Deserialize, Serialize};
 
-use crate::util::version::Version;
+pub mod resolve;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Dependency {

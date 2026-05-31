@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     fs,
     path::{Path, PathBuf},
 };
@@ -11,26 +12,39 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Repository {
-    packages: Vec<Package>,
+    packages: HashMap<String, Package>,
 }
 
 impl Repository {
-    pub fn new() -> Result<Self, CpsiError> {
+    pub fn load() -> Result<Self, CpsiError> {
         let parquet_files = find_all_parquet(constants::REPOSITORIES_DIRECTORY);
 
         if parquet_files.is_empty() {
             return Err(CpsiError::NoRepositories);
         }
 
-        let mut packages = Vec::new();
+        let mut packages = HashMap::new();
 
         for file in parquet_files {
-            let mut loaded = load_packages(&file);
+            let loaded = load_packages(&file);
 
-            packages.append(&mut loaded);
+            for pkg in loaded {
+                if packages.contains_key(&pkg.name) {
+                    return Err(CpsiError::DuplicatePackage(pkg.name.clone()));
+                }
+                packages.insert(pkg.name.clone(), pkg);
+            }
         }
 
         Ok(Self { packages })
+    }
+
+    pub fn find_package<T: AsRef<str>>(&self, package: T) -> Option<&Package> {
+        self.packages.get(package.as_ref())
+    }
+
+    pub fn packages(&self) -> impl Iterator<Item = &Package> {
+        self.packages.values()
     }
 }
 
@@ -57,7 +71,9 @@ fn load_packages<P: AsRef<Path>>(file: P) -> Vec<Package> {
         .unwrap_or_display();
 
     for batch in reader {
-        packages = serde_arrow::from_record_batch(&batch.unwrap_or_display()).unwrap_or_display()
+        let mut loaded: Vec<Package> =
+            serde_arrow::from_record_batch(&batch.unwrap_or_display()).unwrap_or_display();
+        packages.append(&mut loaded);
     }
 
     packages
