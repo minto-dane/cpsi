@@ -1,9 +1,8 @@
 use std::collections::HashSet;
 
-use crate::{
-    dependency::Dependency, package::Package, repository::parquet::Repository,
-    util::errors::CpsiError,
-};
+use crate::repository::parquet::Repository;
+
+use cps_common::{dependency::Dependency, errors::CpsiError, package::Package};
 
 /// Resolve package dependencies in install order.
 ///

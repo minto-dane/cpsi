@@ -1,1 +1,1 @@
-mod install;
+pub mod install;

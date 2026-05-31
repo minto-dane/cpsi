@@ -1,7 +1,7 @@
 use crate::dependency;
-use crate::package::Package;
 use crate::repository;
-use crate::util::errors::CpsiError;
+
+use cps_common::{errors::CpsiError, package::Package};
 
 /// Install specified packages.
 /// ## Arguments
@@ -24,7 +24,17 @@ pub fn install(package_names: &[String]) -> Result<(), CpsiError> {
         install_packages.push(package);
     }
 
-    let deps = dependency::resolve::resolve(&install_packages, &repository_db);
+    let deps = dependency::resolve::resolve(&install_packages, &repository_db)?;
+
+    eprintln!("---- Debug ----");
+    eprintln!("total packages length: {}", deps.len());
+    eprintln!(
+        "all package names: {}",
+        deps.iter()
+            .map(|f| f.name.clone())
+            .collect::<Vec<String>>()
+            .join(" ")
+    );
 
     Ok(())
 

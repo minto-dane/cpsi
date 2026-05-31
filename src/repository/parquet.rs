@@ -1,14 +1,13 @@
+use crate::util::constants;
+use cps_common::{errors::CpsiError, package::Package, result::ResultExt};
+use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     fs,
     path::{Path, PathBuf},
 };
 
-use crate::{
-    package::Package,
-    util::{constants, errors::CpsiError, result::ResultExt},
-};
-use serde::{Deserialize, Serialize};
+type ParquetFormat = Vec<Package>;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Repository {
@@ -63,7 +62,7 @@ fn find_all_parquet(dir: &str) -> Vec<PathBuf> {
 
 fn load_packages<P: AsRef<Path>>(file: P) -> Vec<Package> {
     let file = fs::File::open(file).unwrap_or_display();
-    let mut packages: Vec<Package> = Vec::new();
+    let mut packages: ParquetFormat = Vec::new();
 
     let reader = parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder::try_new(file)
         .unwrap_or_display()
@@ -71,7 +70,7 @@ fn load_packages<P: AsRef<Path>>(file: P) -> Vec<Package> {
         .unwrap_or_display();
 
     for batch in reader {
-        let mut loaded: Vec<Package> =
+        let mut loaded: ParquetFormat =
             serde_arrow::from_record_batch(&batch.unwrap_or_display()).unwrap_or_display();
         packages.append(&mut loaded);
     }

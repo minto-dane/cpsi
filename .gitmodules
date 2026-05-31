@@ -1,0 +1,3 @@
+[submodule "cps-common"]
+	path = cps-common
+	url = https://github.com/CPS-Linux/cps-common
