@@ -10,4 +10,4 @@ parquet = "58.3.0"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_arrow = { version = "0.14.1", features = ["arrow-58"] }
 thiserror = "2.0.18"
-cps-common = { path = "./cps-common" }
+cps-common = { path = "vendor/cps-common" }
