@@ -5,7 +5,7 @@ use cps_common::{
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
-    fs,
+    fs, io,
     path::{Path, PathBuf},
 };
 
@@ -16,7 +16,7 @@ pub struct Repository {
 
 impl Repository {
     pub fn load() -> Result<Self, CpsiError> {
-        let parquet_files = find_all_parquet(constants::REPOSITORIES_DIRECTORY);
+        let parquet_files = find_all_parquet(constants::REPOSITORIES_DIRECTORY)?;
 
         if parquet_files.is_empty() {
             return Err(CpsiError::NoRepositories);
@@ -47,17 +47,17 @@ impl Repository {
     }
 }
 
-fn find_all_parquet(dir: &str) -> Vec<PathBuf> {
+fn find_all_parquet(dir: &str) -> Result<Vec<PathBuf>, io::Error> {
     let mut list = Vec::new();
 
-    for entry in fs::read_dir(dir).unwrap_or_display() {
-        let entry = entry.unwrap_or_display();
-        if entry.file_name().to_str().unwrap().ends_with(".parquet") {
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        if entry.path().extension().is_some_and(|p| p == "parquet") {
             list.push(entry.path());
         }
     }
 
-    return list;
+    Ok(list)
 }
 
 fn load_packages<P: AsRef<Path>>(file: P) -> Vec<Package> {

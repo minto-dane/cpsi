@@ -11,10 +11,7 @@ use cps_common::{errors::CpsiError, package::Package};
 pub fn install(package_names: &[String]) -> Result<(), CpsiError> {
     let mut install_packages: Vec<&Package> = Vec::new();
 
-    let repository_db = repository::parquet::Repository::load().unwrap_or_else(|e| {
-        eprintln!("Failed to load repositories: {}", e.to_string());
-        std::process::exit(1);
-    });
+    let repository_db = repository::parquet::Repository::load()?;
 
     for pkg in package_names {
         let package = repository_db
@@ -33,7 +30,7 @@ pub fn install(package_names: &[String]) -> Result<(), CpsiError> {
         deps.iter()
             .map(|f| f.name.clone())
             .collect::<Vec<String>>()
-            .join(" ")
+            .join(", ")
     );
 
     Ok(())
