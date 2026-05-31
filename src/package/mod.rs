@@ -17,4 +17,6 @@ pub struct Package {
     description: String,
 
     provides: Vec<String>,
+
+    repository: String,
 }
