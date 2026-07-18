@@ -1,0 +1,1 @@
+Resolve the DNS TXT candidate as a public GitHub Gist ID.
