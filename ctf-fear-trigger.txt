@@ -1,0 +1,1 @@
+Authorized temporary public OSINT discovery trigger.
