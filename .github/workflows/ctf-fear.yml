@@ -1,0 +1,214 @@
+name: Temporary OmniCTF Fear investigation
+
+on:
+  push:
+    branches:
+      - ctf-fear-temp
+
+permissions:
+  contents: read
+
+jobs:
+  investigate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Collect public OSINT, DNS, and hidden-service data
+        shell: bash
+        run: |
+          set +e
+          mkdir -p report/api report/web report/repos report/onion
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq dnsutils tor jq curl ca-certificates git
+
+          {
+            echo '=== UTC ==='
+            date -u
+
+            echo '=== rCTF public endpoints ==='
+            for path in /api/v2/leaderboard/challs /api/v2/challs /api/v1/challs /api/v2/integrations/client/config /api/v1/integrations/client/config /robots.txt /; do
+              file=$(printf '%s' "$path" | tr '/?&=' '_')
+              echo "FETCH https://ctf.omnictf.com$path"
+              curl -ksSL --max-time 35 "https://ctf.omnictf.com$path" -o "report/api/${file}.body"
+              wc -c "report/api/${file}.body"
+            done
+
+            echo '=== Parse Fear challenge data ==='
+            python3 - <<'PY'
+          import json, pathlib
+          for p in pathlib.Path('report/api').glob('*.body'):
+              raw=p.read_bytes()
+              try:
+                  obj=json.loads(raw)
+              except Exception:
+                  continue
+              stack=[obj]
+              while stack:
+                  x=stack.pop()
+                  if isinstance(x,dict):
+                      s=json.dumps(x,ensure_ascii=False)
+                      low=s.lower()
+                      if ('fear' in low and ('masquerade' in low or 'osint' in low)) or 'the site exists' in low or 'dig around' in low:
+                          print('FEAR OBJECT FROM',p)
+                          print(json.dumps(x,indent=2,ensure_ascii=False)[:100000])
+                      stack.extend(x.values())
+                  elif isinstance(x,list):
+                      stack.extend(x)
+          PY
+
+            echo '=== Certificate Transparency hosts ==='
+            : > report/hosts.txt
+            for base in omnictf.com dothidden.xyz; do
+              printf '%s\nwww.%s\n' "$base" "$base" >> report/hosts.txt
+              curl -ksSL --max-time 45 "https://crt.sh/?q=%25.${base}&output=json" -o "report/web/crt-${base}.json"
+              jq -r '.[].name_value? // empty' "report/web/crt-${base}.json" 2>/dev/null | tr '\r' '\n' | sed 's/^\*\.//' >> report/hosts.txt
+            done
+            cat >> report/hosts.txt <<'EOF'
+          ctf.omnictf.com
+          api.omnictf.com
+          fear.omnictf.com
+          fear.ctf.omnictf.com
+          masquerade.omnictf.com
+          hidden.omnictf.com
+          onion.omnictf.com
+          tor.omnictf.com
+          dark.omnictf.com
+          darkweb.omnictf.com
+          _fear.omnictf.com
+          _hidden.omnictf.com
+          _onion.omnictf.com
+          _tor.omnictf.com
+          fear.dothidden.xyz
+          masquerade.dothidden.xyz
+          hidden.dothidden.xyz
+          onion.dothidden.xyz
+          tor.dothidden.xyz
+          _fear.dothidden.xyz
+          _hidden.dothidden.xyz
+          _onion.dothidden.xyz
+          _tor.dothidden.xyz
+          EOF
+            sed -i 's/^[[:space:]]*//' report/hosts.txt
+            grep -E '^[A-Za-z0-9_.-]+$' report/hosts.txt | tr '[:upper:]' '[:lower:]' | sort -u > report/hosts.clean
+            cat report/hosts.clean
+
+            echo '=== DNS records ==='
+            : > report/dns.txt
+            while IFS= read -r host; do
+              {
+                echo "===== $host ====="
+                for type in TXT A AAAA CNAME MX NS SOA CAA SRV; do
+                  echo "--- $type ---"
+                  dig +time=5 +tries=1 +noall +answer "$host" "$type"
+                done
+                echo '--- Google DoH TXT ---'
+                curl -ksSL --max-time 20 --get 'https://dns.google/resolve' --data-urlencode "name=$host" --data-urlencode 'type=TXT'
+                echo
+              } >> report/dns.txt 2>&1
+            done < report/hosts.clean
+            cat report/dns.txt
+
+            echo '=== Nameservers and AXFR checks ==='
+            for base in omnictf.com dothidden.xyz; do
+              for ns in $(dig +short NS "$base"); do
+                echo "AXFR $base @$ns"
+                dig +time=8 +tries=1 AXFR "$base" "@$ns"
+              done
+            done
+
+            echo '=== Familiar public profiles ==='
+            urls=(
+              'https://omnictf.com/'
+              'https://omnictf.com/about'
+              'https://omnictf.com/members'
+              'https://github.com/Masquerade4Fun'
+              'https://api.github.com/users/Masquerade4Fun'
+              'https://api.github.com/users/Masquerade4Fun/gists?per_page=100'
+              'https://api.github.com/users/Masquerade4Fun/events/public?per_page=100'
+              'https://api.github.com/users/Masquerade4Fun/repos?per_page=100'
+              'https://github.com/OmniCTF'
+              'https://x.com/OmniCYBR'
+              'https://www.instagram.com/omnicybr/'
+              'https://ctftime.org/team/383015'
+              'https://dothidden.xyz/'
+              'https://github.com/dothidden'
+            )
+            i=0
+            for url in "${urls[@]}"; do
+              i=$((i+1))
+              echo "FETCH $url"
+              curl -ksSL --max-time 40 -A 'Mozilla/5.0' "$url" -o "report/web/profile-${i}.txt"
+              wc -c "report/web/profile-${i}.txt"
+            done
+
+            echo '=== Clone author and team public repositories ==='
+            curl -ksSL 'https://api.github.com/users/Masquerade4Fun/repos?per_page=100' -o report/web/author-repos.json
+            curl -ksSL 'https://api.github.com/orgs/dothidden/repos?per_page=100' -o report/web/team-repos.json
+            jq -r '.[].clone_url? // empty' report/web/author-repos.json report/web/team-repos.json | sort -u > report/repo-urls.txt
+            while IFS= read -r repo; do
+              name=$(printf '%s' "$repo" | sed 's#https://github.com/##;s#\.git$##;s#/#__#g')
+              timeout 90 git clone -q --depth=1 "$repo" "report/repos/$name"
+            done < report/repo-urls.txt
+            grep -RInaE '([a-z2-7]{56}|[a-z2-7]{16})\.onion|\.i2p|CTF\{' report/repos 2>/dev/null | head -10000
+
+            echo '=== Extract hidden-service candidates ==='
+            python3 - <<'PY'
+          import pathlib,re
+          pats=[
+            re.compile(rb'https?://[a-z2-7]{56}\.onion[^\s"\x27<>]*',re.I),
+            re.compile(rb'[a-z2-7]{56}\.onion',re.I),
+            re.compile(rb'https?://[a-z2-7]{16}\.onion[^\s"\x27<>]*',re.I),
+            re.compile(rb'[a-z2-7]{16}\.onion',re.I),
+            re.compile(rb'[a-z0-9.-]+\.i2p',re.I),
+          ]
+          hits=set()
+          for p in pathlib.Path('report').rglob('*'):
+              if not p.is_file(): continue
+              try: data=p.read_bytes()
+              except Exception: continue
+              for pat in pats:
+                  for m in pat.findall(data):
+                      hits.add(m.decode('utf-8','replace').rstrip('),.;'))
+          pathlib.Path('report/hidden-candidates.txt').write_text('\n'.join(sorted(hits))+'\n')
+          print('\n'.join(sorted(hits)))
+          PY
+
+            echo '=== Start Tor ==='
+            mkdir -p "$RUNNER_TEMP/tor-data"
+            tor --SocksPort 9050 --DataDirectory "$RUNNER_TEMP/tor-data" --Log "notice file report/tor.log" >/dev/null 2>&1 &
+            torpid=$!
+            for n in $(seq 1 120); do
+              grep -q 'Bootstrapped 100%' report/tor.log 2>/dev/null && break
+              sleep 2
+            done
+            tail -100 report/tor.log
+
+            echo '=== Fetch onion candidates ==='
+            n=0
+            while IFS= read -r candidate; do
+              onion=$(printf '%s' "$candidate" | grep -Eio '([a-z2-7]{56}|[a-z2-7]{16})\.onion' | head -1)
+              [ -n "$onion" ] || continue
+              n=$((n+1))
+              for scheme in http https; do
+                for path in / /robots.txt /.well-known/security.txt /flag /index.html; do
+                  key=$(printf '%s_%s' "$scheme" "$path" | tr '/' '_')
+                  echo "FETCH $scheme://$onion$path"
+                  curl -ksSL --socks5-hostname 127.0.0.1:9050 --max-time 100 -A 'Mozilla/5.0' -D "report/onion/${n}-${key}.headers" "$scheme://$onion$path" -o "report/onion/${n}-${key}.body"
+                  head -c 300000 "report/onion/${n}-${key}.body"
+                  echo
+                done
+              done
+            done < report/hidden-candidates.txt
+            kill "$torpid" 2>/dev/null
+
+            echo '=== Candidate flags ==='
+            grep -RhaoE 'CTF\{[^}\r\n]{1,300}\}|OMNI\{[^}\r\n]{1,300}\}|OmniCTF\{[^}\r\n]{1,300}\}' report | sort -u | tee report/flags.txt
+          } 2>&1 | tee report/run.txt
+
+      - name: Upload investigation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: omnictf-fear-investigation
+          path: report/
+          retention-days: 1
