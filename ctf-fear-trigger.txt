@@ -1,1 +1,1 @@
-Authorized temporary public OSINT discovery trigger.
+Trigger final authorized cleanup of temporary OmniCTF resources.
